@@ -36,7 +36,7 @@ import { createNativeHistoryCounter } from './codex-history-message-count.js';
 import { readNativeSubagent } from './codex-native-subagents.js';
 import { projectCodexItemMessages } from './codex-item-projection.js';
 import { isGuardianReviewThread } from './codex-thread-visibility.js';
-import { enrichCodexHistoryThreads, readFavoriteCodexThreads } from './codex-history-metadata.js';
+import { enrichCodexHistoryThreads, readFavoriteCodexThreads, filterAvailableCodexThreads } from './codex-history-metadata.js';
 import { settleCodexSessionTitle } from './codex-session-title.js';
 import { generateCodexText } from './codex-text-service.js';
 import { prepareCodexRuntimeEnvironment } from './codex-native-runtime-env.js';
@@ -643,8 +643,18 @@ export async function codexListThreadsPersistent(stdinData, dependencies = {}) {
   const favorites = cursor == null ? await readFavoriteCodexThreads(
     threadId => codexReadOnlyPersistent('thread/read', { ...stdinData, threadId,
       params: { threadId, includeTurns: false } }), dependencies.historyMetadata) : [];
-  const result = await codexReadOnlyPersistent('thread/list', { ...stdinData, params });
-  const threads = [...new Map([...favorites, ...(result.data ?? [])].map(thread => [thread.id, thread])).values()];
+  let result;
+  let threads;
+  const visited = new Set();
+  do {
+    result = await codexReadOnlyPersistent('thread/list', { ...stdinData, params });
+    const merged = [...new Map([...favorites, ...(result.data ?? [])].map(thread => [thread.id, thread])).values()];
+    threads = await filterAvailableCodexThreads(merged, dependencies.historyAvailability);
+    // A stale-only page must not hide valid sessions on subsequent pages.
+    if (threads.length > 0 || result.nextCursor == null || visited.has(result.nextCursor)) break;
+    visited.add(result.nextCursor);
+    params.cursor = result.nextCursor;
+  } while (true);
   return { ...result, data: enrichCodexHistoryThreads(
     filterCodexProjectThreads(threads, projectPath), dependencies.historyMetadata) };
 }

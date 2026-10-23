@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -760,4 +760,46 @@ test('resetRuntime drains and disposes the session entry', async () => {
   });
   assert.equal(result.reset, true);
   assert.equal(getCodexRuntimeSnapshot().sessionCount, 0);
+});
+
+test('deleting a rollout stays deleted after reopening native history, even with a stale favorite', async () => {
+  const original = CodexAppServerService.prototype.readOnly;
+  const path = join(testCwd, 'deleted-favorite.jsonl');
+  const thread = { id: 'deleted-favorite', cwd: testCwd, path };
+  writeFileSync(path, '{}');
+  CodexAppServerService.prototype.readOnly = async method => method === 'thread/read'
+    ? { thread } : { data: [thread], nextCursor: null };
+  try {
+    const data = { channelId: 'deleted-favorite', cwd: testCwd, params: { projectPath: [] } };
+    const dependencies = { historyMetadata: {
+      loadFavorites: () => ({ 'deleted-favorite': { favoritedAt: 1 } }), loadTitles: () => ({}),
+    } };
+    assert.equal((await codexListThreadsPersistent(data, dependencies)).data.length, 1);
+    unlinkSync(path);
+    assert.deepEqual((await codexListThreadsPersistent(data, dependencies)).data, []);
+    assert.deepEqual((await codexListThreadsPersistent(data, dependencies)).data, []);
+  } finally {
+    CodexAppServerService.prototype.readOnly = original;
+  }
+});
+
+test('history skips stale-only pages without losing the native cursor', async () => {
+  const original = CodexAppServerService.prototype.readOnly;
+  const cursors = [];
+  CodexAppServerService.prototype.readOnly = async (method, params) => {
+    assert.equal(method, 'thread/list');
+    cursors.push(params.cursor);
+    return params.cursor === 'next'
+      ? { data: [{ id: 'exists', cwd: testCwd }], nextCursor: 'last' }
+      : { data: [{ id: 'missing', path: join(testCwd, 'missing.jsonl') }], nextCursor: 'next' };
+  };
+  try {
+    const result = await codexListThreadsPersistent({ channelId: 'stale-page', cwd: testCwd,
+      params: { projectPath: [] } }, { historyMetadata: { loadFavorites: () => ({}), loadTitles: () => ({}) } });
+    assert.deepEqual(result.data.map(thread => thread.id), ['exists']);
+    assert.equal(result.nextCursor, 'last');
+    assert.deepEqual(cursors, [undefined, 'next']);
+  } finally {
+    CodexAppServerService.prototype.readOnly = original;
+  }
 });
