@@ -150,3 +150,38 @@ it('deduplicates advertised and proposed command rules while retaining distinct 
   expect(result.current.currentPermissionRequest?.suggestions)
     .toEqual(['accept', 'acceptForSession', 'decline', first, second]);
 });
+
+describe('Codex command approval suggestions', () => {
+  const ruleDecision = { acceptWithExecpolicyAmendment: { execpolicy_amendment: ['git', 'status'] } };
+
+  function requestCommandApproval(params: Record<string, unknown>) {
+    const { result } = renderHook(() => useDialogManagement({ t }));
+    act(() => { registerDialogCallbacks(result.current); });
+    act(() => {
+      window.onCodexRuntimeEvent?.(JSON.stringify({
+        kind: 'interactionRequested',
+        channelId: 'C',
+        interactionKey: 'approval-key',
+        dialogToken: 'approval-token',
+        deliverySequence: 1,
+        payload: { method: 'item/commandExecution/requestApproval', params },
+      }));
+    });
+    return result.current.currentPermissionRequest?.suggestions;
+  }
+
+  it('keeps the advertised decision list as-is instead of appending the proposed rule twice', () => {
+    expect(requestCommandApproval({
+      command: 'git status',
+      availableDecisions: ['accept', ruleDecision, 'cancel'],
+      proposedExecpolicyAmendment: ['git', 'status'],
+    })).toEqual(['accept', ruleDecision, 'cancel']);
+  });
+
+  it('still offers the proposed rule when the server advertises no decision list', () => {
+    expect(requestCommandApproval({
+      command: 'git status',
+      proposedExecpolicyAmendment: ['git', 'status'],
+    })).toEqual(['accept', 'acceptForSession', 'decline', ruleDecision]);
+  });
+});

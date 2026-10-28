@@ -37,18 +37,22 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 /**
  * Build the typed decision suggestions a Codex approval dialog may offer.
  *
- * Combine advertised decisions with proposed command and network rules.
- * The same rule can arrive in both fields, so identical suggestions are
- * offered once while distinct rules remain separate choices.
+ * When the app-server advertises `availableDecisions`, that list is
+ * authoritative and already carries any rule amendment it will accept, so it
+ * is used as-is; appending the proposed amendments again rendered duplicate
+ * "allow with rule" buttons. Without that list, amendments proposed through
+ * `proposedExecpolicyAmendment` (string[]) and
+ * `proposedNetworkPolicyAmendments` ({host, action}[]) become extra options on
+ * top of the standard accept/acceptForSession/decline decisions. Returns
+ * undefined when there is nothing to advertise so the dialog keeps its
+ * default options.
  */
 function buildCodexApprovalSuggestions(params: Record<string, unknown>): unknown[] | undefined {
-  const suggestions: unknown[] = [];
   const advertised = params.availableDecisions ?? params.available_decisions;
   if (Array.isArray(advertised)) {
-    suggestions.push(...advertised);
-  } else {
-    suggestions.push('accept', 'acceptForSession', 'decline');
+    return advertised.length > 0 ? [...advertised] : undefined;
   }
+  const suggestions: unknown[] = ['accept', 'acceptForSession', 'decline'];
   const execpolicyAmendment = params.proposedExecpolicyAmendment;
   if (Array.isArray(execpolicyAmendment) && execpolicyAmendment.length > 0
       && execpolicyAmendment.every((entry) => typeof entry === 'string')) {

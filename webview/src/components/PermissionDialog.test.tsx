@@ -1,4 +1,4 @@
-import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PermissionDialog, { type PermissionRequest } from './PermissionDialog';
 import { useDialogManagement } from '../hooks/useDialogManagement';
@@ -292,6 +292,33 @@ describe('PermissionDialog', () => {
       interactionKey: 'rule-request', channelId: 'perm-1', dialogToken: 'rule-token',
       result: { decision: rule },
     }));
+  });
+
+  it('shows which command prefix or host a native rule would allow', () => {
+    render(
+      <PermissionDialog
+        isOpen
+        request={buildRequest({
+          provider: 'codex',
+          codexMethod: 'item/commandExecution/requestApproval',
+          suggestions: [
+            'accept',
+            { acceptWithExecpolicyAmendment: { execpolicy_amendment: ['git', 'status'] } },
+            { applyNetworkPolicyAmendment: { network_policy_amendment: { host: 'example.com', action: 'allow' } } },
+            'cancel',
+          ],
+        })}
+        onApprove={() => {}}
+        onSkip={() => {}}
+        onApproveAlways={() => {}}
+        onDecision={() => {}}
+      />,
+    );
+
+    const commandRule = screen.getByRole('button', { name: /Allow with this command rule/ });
+    expect(within(commandRule).getByText('git status').getAttribute('title')).toBe('git status');
+    const networkRule = screen.getByRole('button', { name: /Allow with this network rule/ });
+    expect(within(networkRule).getByText('example.com')).toBeTruthy();
   });
 
   it('auto-denies with the original channelId after timeoutSeconds elapses', () => {
