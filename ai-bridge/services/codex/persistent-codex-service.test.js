@@ -326,7 +326,8 @@ test('first list resolves every favorite before ordinary history and paging neve
       { id: params.cursor ? 'older-ordinary' : 'ordinary', cwd: '/project' }], nextCursor: params.cursor ? null : 'next-page' };
   };
   try {
-    const data = { channelId: 'favorite-first', cwd: testCwd, params: { projectPath: '/project', limit: 2 } };
+    const data = { channelId: 'favorite-first', cwd: testCwd,
+      codexCommandPrefix: peerCommandPrefix('early-notification'), params: { projectPath: '/project', limit: 2 } };
     const dependencies = { historyMetadata: { loadFavorites: () => favorites, loadTitles: () => ({}) } };
     const first = await codexListThreadsPersistent(data, dependencies);
     assert.equal(first.data.filter(row => row.isFavorited).length, 9);
@@ -823,7 +824,8 @@ test('deleting a rollout stays deleted after reopening native history, even with
   CodexAppServerService.prototype.readOnly = async method => method === 'thread/read'
     ? { thread } : { data: [thread], nextCursor: null };
   try {
-    const data = { channelId: 'deleted-favorite', cwd: testCwd, params: { projectPath: [] } };
+    const data = { channelId: 'deleted-favorite', cwd: testCwd,
+      codexCommandPrefix: peerCommandPrefix('early-notification'), params: { projectPath: [] } };
     const dependencies = { historyMetadata: {
       loadFavorites: () => ({ 'deleted-favorite': { favoritedAt: 1 } }), loadTitles: () => ({}),
     } };
@@ -848,7 +850,7 @@ test('history skips stale-only pages without losing the native cursor', async ()
   };
   try {
     const result = await codexListThreadsPersistent({ channelId: 'stale-page', cwd: testCwd,
-      params: { projectPath: [] } }, { historyMetadata: { loadFavorites: () => ({}), loadTitles: () => ({}) } });
+      codexCommandPrefix: peerCommandPrefix('early-notification'), params: { projectPath: [] } }, { historyMetadata: { loadFavorites: () => ({}), loadTitles: () => ({}) } });
     assert.deepEqual(result.data.map(thread => thread.id), ['exists']);
     assert.equal(result.nextCursor, 'last');
     assert.deepEqual(cursors, [undefined, 'next']);
